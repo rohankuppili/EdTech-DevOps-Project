@@ -24,6 +24,7 @@ tutorly-space-main
 │  ├─ package.json
 │  ├─ postcss.config.js
 │  ├─ public
+│  │  ├─ edu.svg
 │  │  ├─ favicon.ico
 │  │  ├─ placeholder.svg
 │  │  └─ robots.txt
