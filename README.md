@@ -1,12 +1,14 @@
-Project Structure Tree:
+
 ```
 tutorly-space-main
 ├─ backend
+│  ├─ .dockerignore
 │  ├─ config
 │  │  └─ db.js
 │  ├─ controllers
 │  │  ├─ authControllers.js
 │  │  └─ courseControllers.js
+│  ├─ Dockerfile
 │  ├─ middlewares
 │  │  └─ authMiddleware.js
 │  ├─ models
@@ -15,15 +17,21 @@ tutorly-space-main
 │  ├─ package-lock.json
 │  ├─ package.json
 │  └─ server.js
+├─ docker-compose.yml
 ├─ frontend
+│  ├─ .dockerignore
 │  ├─ bun.lockb
 │  ├─ components.json
+│  ├─ Dockerfile
 │  ├─ eslint.config.js
 │  ├─ index.html
+│  ├─ nginx
+│  │  └─ default.conf
 │  ├─ package-lock.json
 │  ├─ package.json
 │  ├─ postcss.config.js
 │  ├─ public
+│  │  ├─ edu.svg
 │  │  ├─ favicon.ico
 │  │  ├─ placeholder.svg
 │  │  └─ robots.txt
@@ -104,6 +112,8 @@ tutorly-space-main
 │  ├─ tsconfig.json
 │  ├─ tsconfig.node.json
 │  └─ vite.config.ts
+├─ nginx
+│  └─ default.conf
 └─ README.md
 
 ```
