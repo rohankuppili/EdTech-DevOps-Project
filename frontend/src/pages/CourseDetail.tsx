@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, BookOpen, PlayCircle, FileText, Download, FileIcon } from 'lucide-react';
+import { ArrowLeft, BookOpen, PlayCircle, FileText, Download, FileIcon, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiFetch } from '@/lib/api';
 
@@ -15,10 +15,11 @@ interface BackendCourse {
   description?: string;
   instructor?: { _id: string; name: string; email: string };
   lessons?: number;
+  thumbnail?: string;
   materials?: Array<{
     id: string;
     name: string;
-    type: string;
+    type: string; // can be mimetype or 'youtube' | 'drive'
     url: string;
     size: number;
   }>;
@@ -126,9 +127,51 @@ const CourseDetail = () => {
     document.body.removeChild(link);
   };
 
+  const isYouTube = (type: string, url: string) => type === 'youtube' || /youtube\.com|youtu\.be/.test(url);
+  const isDrive = (type: string, url: string) => type === 'drive' || /drive\.google\.com/.test(url);
+
+  const getYouTubeId = (url: string) => {
+    try {
+      const u = new URL(url);
+      if (u.hostname.includes('youtu.be')) return u.pathname.replace('/', '');
+      if (u.hostname.includes('youtube.com')) {
+        const v = u.searchParams.get('v');
+        if (v) return v;
+        const parts = u.pathname.split('/');
+        const idx = parts.indexOf('embed');
+        if (idx >= 0 && parts[idx + 1]) return parts[idx + 1];
+      }
+    } catch {}
+    return '';
+  };
+
+  const getDriveId = (url: string) => {
+    try {
+      const u = new URL(url);
+      const parts = u.pathname.split('/');
+      const idx = parts.indexOf('d');
+      if (idx >= 0 && parts[idx + 1]) return parts[idx + 1];
+      const idParam = u.searchParams.get('id');
+      if (idParam) return idParam;
+    } catch {}
+    return '';
+  };
+
+  const getMaterialThumb = (material: any) => {
+    if (isYouTube(material.type, material.url)) {
+      const vid = getYouTubeId(material.url);
+      if (vid) return `https://img.youtube.com/vi/${vid}/hqdefault.jpg`;
+    }
+    if (isDrive(material.type, material.url)) {
+      const fid = getDriveId(material.url);
+      if (fid) return `https://drive.google.com/thumbnail?id=${fid}&sz=w200`;
+    }
+    return '';
+  };
+
   const getFileIcon = (type: string) => {
-    if (type.startsWith('video/')) return <PlayCircle className="h-5 w-5 text-primary" />;
-    if (type.startsWith('image/')) return <FileIcon className="h-5 w-5 text-secondary" />;
+    if (type.startsWith?.('video/')) return <PlayCircle className="h-5 w-5 text-primary" />;
+    if (type.startsWith?.('image/')) return <FileIcon className="h-5 w-5 text-secondary" />;
     return <FileText className="h-5 w-5 text-accent" />;
   };
 
@@ -152,6 +195,11 @@ const CourseDetail = () => {
           <div className="lg:col-span-2">
             <Card className="mb-6">
               <CardHeader>
+                {course.thumbnail && (
+                  <div className="aspect-video rounded-lg mb-4 overflow-hidden bg-muted">
+                    <img src={course.thumbnail} alt="Course thumbnail" className="w-full h-full object-cover" />
+                  </div>
+                )}
                 <CardTitle className="text-3xl">{course.title}</CardTitle>
                 <CardDescription className="text-base">by {course.instructor?.name}</CardDescription>
               </CardHeader>
@@ -206,30 +254,51 @@ const CourseDetail = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {course.materials.map((material) => (
-                      <div
-                        key={material.id}
-                        className="flex items-center justify-between p-4 rounded-lg border hover:bg-accent/50 transition-colors"
-                      >
-                        <div className="flex items-center gap-3 flex-1">
-                          {getFileIcon(material.type)}
-                          <div>
-                            <p className="font-medium">{material.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {(material.size / 1024 / 1024).toFixed(2)} MB
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleDownload(material)}
+                    {course.materials.map((material) => {
+                      const isYt = isYouTube(material.type, material.url);
+                      const isGd = isDrive(material.type, material.url);
+                      const thumb = getMaterialThumb(material);
+                      return (
+                        <div
+                          key={material.id}
+                          className="flex items-center justify-between p-4 rounded-lg border hover:bg-accent/50 transition-colors"
                         >
-                          <Download className="h-4 w-4 mr-2" />
-                          Download
-                        </Button>
-                      </div>
-                    ))}
+                          <div className="flex items-center gap-3 flex-1">
+                            {thumb ? (
+                              <img src={thumb} alt="thumb" className="w-12 h-12 rounded object-cover" />
+                            ) : (
+                              getFileIcon(material.type)
+                            )}
+                            <div className="min-w-0">
+                              <p className="font-medium truncate">{material.name}</p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {isYt ? 'YouTube' : isGd ? 'Google Drive' : material.type}
+                                {material.size ? ` • ${(material.size / 1024 / 1024).toFixed(2)} MB` : ''}
+                              </p>
+                            </div>
+                          </div>
+                          {isYt || isGd ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => window.open(material.url, '_blank')}
+                            >
+                              <ExternalLink className="h-4 w-4 mr-2" />
+                              Open
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDownload(material)}
+                            >
+                              <Download className="h-4 w-4 mr-2" />
+                              Download
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>

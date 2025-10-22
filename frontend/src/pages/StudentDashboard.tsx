@@ -14,6 +14,7 @@ interface BackendCourse {
   description?: string;
   instructor?: { _id: string; name: string; email: string };
   lessons?: number;
+  thumbnail?: string;
 }
 
 interface Enrollment {
@@ -23,12 +24,13 @@ interface Enrollment {
 }
 
 const StudentDashboard = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, isLoading } = useAuth();
   const navigate = useNavigate();
   const [courses, setCourses] = useState<BackendCourse[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
 
   useEffect(() => {
+    if (isLoading) return;
     if (!user || user.role !== 'student') {
       navigate('/auth');
       return;
@@ -47,7 +49,14 @@ const StudentDashboard = () => {
     // Load enrollments
     const storedEnrollments = JSON.parse(localStorage.getItem(`enrollments_${user.id}`) || '[]');
     setEnrollments(storedEnrollments);
-  }, [user, navigate]);
+  }, [user, isLoading, navigate]);
+
+  const handleDeleteAccount = async () => {
+    const ok = window.confirm('This will permanently delete your account. Continue?');
+    if (!ok) return;
+    try { await apiFetch('/auth/me', { method: 'DELETE' }); } catch {}
+    logout();
+  };
 
   const handleEnroll = async (courseId: string) => {
     try {
@@ -79,8 +88,9 @@ const StudentDashboard = () => {
             <GraduationCap className="h-8 w-8 text-primary" />
             <h1 className="text-2xl font-bold">EduPlatform</h1>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Welcome, {user?.name}</span>
+            <Button variant="destructive" size="sm" onClick={handleDeleteAccount}>Delete Account</Button>
             <Button variant="outline" size="sm" onClick={logout}>
               <LogOut className="h-4 w-4 mr-2" />
               Logout
@@ -107,8 +117,14 @@ const StudentDashboard = () => {
                 return (
                   <Card key={course._id} className="hover:shadow-lg transition-shadow">
                     <CardHeader>
-                      <div className="aspect-video bg-gradient-to-br from-primary/20 to-secondary/20 rounded-lg mb-4 flex items-center justify-center overflow-hidden">
-                        <BookOpen className="h-12 w-12 text-primary" />
+                      <div className="aspect-video rounded-lg mb-4 overflow-hidden bg-muted">
+                        {course.thumbnail ? (
+                          <img src={course.thumbnail} alt="Course thumbnail" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <BookOpen className="h-12 w-12 text-primary" />
+                          </div>
+                        )}
                       </div>
                       <CardTitle>{course.title}</CardTitle>
                       <CardDescription>{course.instructor?.name}</CardDescription>
@@ -158,8 +174,14 @@ const StudentDashboard = () => {
               {availableCourses.map(course => (
                 <Card key={course._id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
-                    <div className="aspect-video bg-gradient-to-br from-primary/20 to-secondary/20 rounded-lg mb-4 flex items-center justify-center overflow-hidden">
-                      <BookOpen className="h-12 w-12 text-primary" />
+                    <div className="aspect-video rounded-lg mb-4 overflow-hidden bg-muted">
+                      {course.thumbnail ? (
+                        <img src={course.thumbnail} alt="Course thumbnail" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <BookOpen className="h-12 w-12 text-primary" />
+                        </div>
+                      )}
                     </div>
                     <CardTitle>{course.title}</CardTitle>
                     <CardDescription>{course.instructor?.name}</CardDescription>

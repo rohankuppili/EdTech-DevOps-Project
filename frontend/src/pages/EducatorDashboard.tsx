@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { GraduationCap, LogOut, Plus, BookOpen, Edit, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiFetch } from '@/lib/api';
@@ -32,13 +33,13 @@ interface BackendCourse {
 }
 
 const EducatorDashboard = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, isLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [courses, setCourses] = useState<BackendCourse[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<any | null>(null);
-  
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -47,18 +48,52 @@ const EducatorDashboard = () => {
     price: '0',
     tags: '',
   });
-  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
-  const [thumbnailPreview, setThumbnailPreview] = useState<string>('');
-  const [materialFiles, setMaterialFiles] = useState<File[]>([]);
+  // derived thumbnails from tag selection
+  const [linkMaterials, setLinkMaterials] = useState<Array<{ id: string; type: string; url: string; name: string; size?: number }>>([]);
+  const [newYouTubeUrl, setNewYouTubeUrl] = useState('');
+  const [newYouTubeTitle, setNewYouTubeTitle] = useState('');
+  const [newDriveUrl, setNewDriveUrl] = useState('');
+  const [newDriveTitle, setNewDriveTitle] = useState('');
+
+  const TAGS = ['Math', 'Science', 'Programming', 'Design', 'Others'] as const;
+
+  const getTagThumbnail = (tag: string) => {
+    const safe = (s: string) => encodeURIComponent(s);
+    const base = (bg: string, fg: string, label: string) =>
+      `data:image/svg+xml;utf8,` +
+      safe(
+        `<svg xmlns='http://www.w3.org/2000/svg' width='800' height='450'>` +
+          `<defs><linearGradient id='g' x1='0' x2='1' y1='0' y2='1'><stop offset='0' stop-color='${bg}'/><stop offset='1' stop-color='${fg}'/></linearGradient></defs>` +
+          `<rect width='100%' height='100%' fill='url(#g)'/>` +
+          `<text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='Inter,Arial' font-size='72' fill='white' opacity='0.9'>${label}</text>` +
+        `</svg>`
+      );
+    switch (tag) {
+      case 'Math': return base('#2563eb', '#1e3a8a', 'Math');
+      case 'Science': return base('#059669', '#064e3b', 'Science');
+      case 'Programming': return base('#7c3aed', '#4c1d95', 'Code');
+      case 'Design': return base('#f59e0b', '#b45309', 'Design');
+      default: return base('#64748b', '#334155', 'Course');
+    }
+  };
 
   useEffect(() => {
+    if (isLoading) return;
     if (!user || user.role !== 'educator') {
       navigate('/auth');
       return;
     }
-
     loadCourses();
-  }, [user, navigate]);
+  }, [user, isLoading, navigate]);
+
+  const handleDeleteAccount = async () => {
+    const ok = window.confirm('This will permanently delete your account and your courses. Continue?');
+    if (!ok) return;
+    try {
+      await apiFetch('/auth/me', { method: 'DELETE' });
+    } catch {}
+    logout();
+  };
 
   const loadCourses = async () => {
     try {
@@ -72,36 +107,20 @@ const EducatorDashboard = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Handle thumbnail upload
-    let thumbnailUrl = editingCourse?.thumbnail || '';
-    if (thumbnailFile) {
-      const reader = new FileReader();
-      thumbnailUrl = await new Promise((resolve) => {
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(thumbnailFile);
-      });
-    }
 
-    // Handle materials upload
-    const materials = editingCourse?.materials ? [...editingCourse.materials] : [];
-    if (materialFiles.length > 0) {
-      for (const file of materialFiles) {
-        const reader = new FileReader();
-        const fileUrl = await new Promise<string>((resolve) => {
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        });
-        materials.push({
-          id: `${Date.now()}-${Math.random()}`,
-          name: file.name,
-          type: file.type,
-          url: fileUrl,
-          size: file.size,
-        });
-      }
-    }
-    
+    // Derive thumbnail from selected tag (first tag or Others)
+    const primaryTag = (formData.tags || '').split(',').map(t => t.trim()).filter(Boolean)[0] || 'Others';
+    const thumbnailUrl = getTagThumbnail(primaryTag);
+
+    // Use the editable list as the single source of truth
+    const materials = linkMaterials.map((m) => ({
+      id: m.id,
+      name: m.name,
+      type: m.type,
+      url: m.url,
+      size: m.size ?? 0,
+    }));
+
     // Parse tags and price
     const parsedTags = formData.tags
       .split(',')
@@ -155,8 +174,6 @@ const EducatorDashboard = () => {
     resetForm();
   };
 
-  // Editing to be implemented later
-
   const handleDelete = async (courseId: string) => {
     try {
       await apiFetch(`/courses/${courseId}`, { method: 'DELETE' });
@@ -177,26 +194,76 @@ const EducatorDashboard = () => {
       tags: '',
     });
     setEditingCourse(null);
-    setThumbnailFile(null);
-    setThumbnailPreview('');
-    setMaterialFiles([]);
+    setLinkMaterials([]);
+    setNewYouTubeUrl('');
+    setNewYouTubeTitle('');
+    setNewDriveUrl('');
+    setNewDriveTitle('');
   };
 
-  const handleThumbnailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setThumbnailFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setThumbnailPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+  // no manual thumbnail upload anymore
+
+  const extractYouTubeId = (url: string) => {
+    try {
+      const u = new URL(url);
+      if (u.hostname.includes('youtu.be')) return u.pathname.replace('/', '');
+      if (u.hostname.includes('youtube.com')) {
+        const v = u.searchParams.get('v');
+        if (v) return v;
+        const parts = u.pathname.split('/');
+        const idx = parts.indexOf('embed');
+        if (idx >= 0 && parts[idx + 1]) return parts[idx + 1];
+      }
+    } catch {}
+    return '';
+  };
+
+  const extractDriveId = (url: string) => {
+    try {
+      const u = new URL(url);
+      // Format: https://drive.google.com/file/d/FILE_ID/view
+      const parts = u.pathname.split('/');
+      const idx = parts.indexOf('d');
+      if (idx >= 0 && parts[idx + 1]) return parts[idx + 1];
+      // Shared links: https://drive.google.com/open?id=FILE_ID or ?id=
+      const idParam = u.searchParams.get('id');
+      if (idParam) return idParam;
+    } catch {}
+    return '';
+  };
+
+  const addYouTubeMaterial = () => {
+    const vid = extractYouTubeId(newYouTubeUrl.trim());
+    if (!vid) {
+      toast({ title: 'Invalid YouTube URL', variant: 'destructive' });
+      return;
     }
+    const watchUrl = `https://www.youtube.com/watch?v=${vid}`;
+    setLinkMaterials((prev) => [
+      ...prev,
+      { id: `yt-${vid}-${Date.now()}`, type: 'youtube', url: watchUrl, name: newYouTubeTitle || 'YouTube Video' },
+    ]);
+    setNewYouTubeUrl('');
+    setNewYouTubeTitle('');
   };
 
-  const handleMaterialsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    setMaterialFiles(files);
+  const addDriveMaterial = () => {
+    const fid = extractDriveId(newDriveUrl.trim());
+    if (!fid) {
+      toast({ title: 'Invalid Google Drive link', variant: 'destructive' });
+      return;
+    }
+    const openUrl = `https://drive.google.com/uc?export=view&id=${fid}`;
+    setLinkMaterials((prev) => [
+      ...prev,
+      { id: `gd-${fid}-${Date.now()}`, type: 'drive', url: openUrl, name: newDriveTitle || 'Drive Resource' },
+    ]);
+    setNewDriveUrl('');
+    setNewDriveTitle('');
+  };
+
+  const removeLinkMaterial = (id: string) => {
+    setLinkMaterials((prev) => prev.filter((m) => m.id !== id));
   };
 
   const handleDialogClose = (open: boolean) => {
@@ -216,9 +283,7 @@ const EducatorDashboard = () => {
       price: String(course.price ?? 0),
       tags: (course.tags || []).join(', '),
     });
-    setThumbnailPreview('');
-    setThumbnailFile(null);
-    setMaterialFiles([]);
+    setLinkMaterials([]);
     setIsDialogOpen(true);
   };
 
@@ -230,8 +295,11 @@ const EducatorDashboard = () => {
             <GraduationCap className="h-8 w-8 text-primary" />
             <h1 className="text-2xl font-bold">EduPlatform</h1>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Welcome, {user?.name}</span>
+            <Button variant="destructive" size="sm" onClick={handleDeleteAccount}>
+              Delete Account
+            </Button>
             <Button variant="outline" size="sm" onClick={logout}>
               <LogOut className="h-4 w-4 mr-2" />
               Logout
@@ -241,6 +309,9 @@ const EducatorDashboard = () => {
       </header>
 
       <main className="container mx-auto px-4 py-8">
+        {isLoading && (
+          <div className="text-center py-20 text-muted-foreground">Loading...</div>
+        )}
         <div className="mb-8 flex justify-between items-center">
           <div>
             <h2 className="text-3xl font-bold mb-2">My Courses</h2>
@@ -293,55 +364,70 @@ const EducatorDashboard = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="tags">Tags</Label>
-                      <Input
-                        id="tags"
-                        placeholder="e.g., math, beginner"
-                        value={formData.tags}
-                        onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-                      />
+                      <Label>Category</Label>
+                      <Select
+                        value={(formData.tags.split(',')[0] || 'Others')}
+                        onValueChange={(val) => setFormData({ ...formData, tags: val === 'Others' ? '' : val })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TAGS.map((t) => (
+                            <SelectItem key={t} value={t}>{t}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="thumbnail">Course Thumbnail</Label>
-                    <Input
-                      id="thumbnail"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleThumbnailChange}
-                    />
-                    {thumbnailPreview && (
-                      <div className="mt-2">
-                        <img
-                          src={thumbnailPreview}
-                          alt="Thumbnail preview"
-                          className="w-full h-32 object-cover rounded-lg"
+                  {/* Thumbnail is auto-derived from selected tag */}
+                  <div className="space-y-3">
+                    <Label>Study Materials</Label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="space-y-2 p-3 border rounded-lg">
+                        <p className="text-sm font-medium">Add YouTube Video</p>
+                        <Input
+                          placeholder="YouTube URL"
+                          value={newYouTubeUrl}
+                          onChange={(e) => setNewYouTubeUrl(e.target.value)}
                         />
+                        <Input
+                          placeholder="Title (optional)"
+                          value={newYouTubeTitle}
+                          onChange={(e) => setNewYouTubeTitle(e.target.value)}
+                        />
+                        <Button type="button" variant="outline" onClick={addYouTubeMaterial}>Add Video</Button>
                       </div>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="materials">Study Materials</Label>
-                    <Input
-                      id="materials"
-                      type="file"
-                      accept=".pdf,.docx,.doc,.pptx,.ppt,.xlsx,.xls,image/*,video/*"
-                      multiple
-                      onChange={handleMaterialsChange}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Upload PDFs, documents, images, or videos (max 20MB per file)
-                    </p>
-                    {materialFiles.length > 0 && (
-                      <div className="mt-2 space-y-1">
-                        {materialFiles.map((file, idx) => (
-                          <p key={idx} className="text-sm text-muted-foreground">
-                            • {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                          </p>
+                      <div className="space-y-2 p-3 border rounded-lg">
+                        <p className="text-sm font-medium">Add Google Drive Link</p>
+                        <Input
+                          placeholder="Google Drive link"
+                          value={newDriveUrl}
+                          onChange={(e) => setNewDriveUrl(e.target.value)}
+                        />
+                        <Input
+                          placeholder="Title (optional)"
+                          value={newDriveTitle}
+                          onChange={(e) => setNewDriveTitle(e.target.value)}
+                        />
+                        <Button type="button" variant="outline" onClick={addDriveMaterial}>Add Resource</Button>
+                      </div>
+                    </div>
+                    {linkMaterials.length > 0 && (
+                      <div className="mt-2 space-y-2">
+                        {linkMaterials.map((m) => (
+                          <div key={m.id} className="flex items-center justify-between p-2 border rounded-md">
+                            <div className="truncate">
+                              <p className="text-sm font-medium">{m.name}</p>
+                              <p className="text-xs text-muted-foreground truncate">{m.type.toUpperCase()} • {m.url}</p>
+                            </div>
+                            <Button type="button" variant="ghost" onClick={() => removeLinkMaterial(m.id)}>Remove</Button>
+                          </div>
                         ))}
                       </div>
                     )}
                   </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="duration">Duration</Label>
@@ -389,8 +475,14 @@ const EducatorDashboard = () => {
             {courses.map((course) => (
               <Card key={course._id} className="hover:shadow-lg transition-shadow">
                 <CardHeader>
-                  <div className="aspect-video bg-gradient-to-br from-primary/20 to-secondary/20 rounded-lg mb-4 flex items-center justify-center overflow-hidden">
-                    <BookOpen className="h-12 w-12 text-primary" />
+                  <div className="aspect-video rounded-lg mb-4 overflow-hidden bg-muted">
+                    {course.thumbnail ? (
+                      <img src={course.thumbnail} alt="Course thumbnail" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <BookOpen className="h-12 w-12 text-primary" />
+                      </div>
+                    )}
                   </div>
                   <CardTitle>{course.title}</CardTitle>
                   <CardDescription>{course.description}</CardDescription>

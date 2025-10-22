@@ -1,8 +1,27 @@
 import jwt from "jsonwebtoken";
 import { User } from "../models/User.js";
+import { Course } from "../models/Course.js";
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+};
+
+// Delete own account
+export const deleteMe = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const me = await User.findById(userId);
+    if (!me) return res.status(404).json({ message: "User not found" });
+
+    if (me.role === "instructor") {
+      await Course.deleteMany({ instructor: userId });
+    }
+
+    await User.deleteOne({ _id: userId });
+    res.json({ message: "Account deleted" });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to delete account", error });
+  }
 };
 
 // Register
