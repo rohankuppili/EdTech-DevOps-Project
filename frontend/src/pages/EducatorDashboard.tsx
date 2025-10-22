@@ -19,6 +19,16 @@ interface BackendCourse {
   price?: number;
   tags?: string[];
   studentsEnrolled?: string[];
+  duration?: string;
+  lessons?: number;
+  thumbnail?: string;
+  materials?: Array<{
+    id: string;
+    name: string;
+    type: string;
+    url: string;
+    size: number;
+  }>;
 }
 
 const EducatorDashboard = () => {
@@ -34,6 +44,8 @@ const EducatorDashboard = () => {
     description: '',
     duration: '',
     lessons: '0',
+    price: '0',
+    tags: '',
   });
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [thumbnailPreview, setThumbnailPreview] = useState<string>('');
@@ -72,7 +84,7 @@ const EducatorDashboard = () => {
     }
 
     // Handle materials upload
-    const materials = editingCourse?.materials || [];
+    const materials = editingCourse?.materials ? [...editingCourse.materials] : [];
     if (materialFiles.length > 0) {
       for (const file of materialFiles) {
         const reader = new FileReader();
@@ -90,8 +102,33 @@ const EducatorDashboard = () => {
       }
     }
     
+    // Parse tags and price
+    const parsedTags = formData.tags
+      .split(',')
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+    const parsedPrice = Number(formData.price) || 0;
+
     if (editingCourse) {
-      toast({ title: 'Edit not implemented yet', description: 'Editing will be wired to backend later.' });
+      try {
+        await apiFetch(`/courses/${editingCourse._id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            title: formData.title,
+            description: formData.description,
+            duration: formData.duration,
+            lessons: Number(formData.lessons) || 0,
+            price: parsedPrice,
+            tags: parsedTags,
+            thumbnail: thumbnailUrl,
+            materials,
+          }),
+        });
+        toast({ title: 'Course updated', description: 'Your course has been updated successfully' });
+        await loadCourses();
+      } catch (err) {
+        toast({ title: 'Failed to update course', variant: 'destructive' });
+      }
     } else {
       try {
         await apiFetch('/courses', {
@@ -99,8 +136,12 @@ const EducatorDashboard = () => {
           body: JSON.stringify({
             title: formData.title,
             description: formData.description,
-            price: 0,
-            tags: [],
+            duration: formData.duration,
+            lessons: Number(formData.lessons) || 0,
+            price: parsedPrice,
+            tags: parsedTags,
+            thumbnail: thumbnailUrl,
+            materials,
           }),
         });
         toast({ title: 'Course created', description: 'Your course has been created successfully' });
@@ -116,8 +157,14 @@ const EducatorDashboard = () => {
 
   // Editing to be implemented later
 
-  const handleDelete = (courseId: string) => {
-    toast({ title: 'Delete not implemented', description: 'Deletion will be wired to backend later.' });
+  const handleDelete = async (courseId: string) => {
+    try {
+      await apiFetch(`/courses/${courseId}`, { method: 'DELETE' });
+      toast({ title: 'Course deleted', description: 'The course has been removed' });
+      await loadCourses();
+    } catch (err) {
+      toast({ title: 'Failed to delete course', variant: 'destructive' });
+    }
   };
 
   const resetForm = () => {
@@ -126,6 +173,8 @@ const EducatorDashboard = () => {
       description: '',
       duration: '',
       lessons: '0',
+      price: '0',
+      tags: '',
     });
     setEditingCourse(null);
     setThumbnailFile(null);
@@ -155,6 +204,22 @@ const EducatorDashboard = () => {
     if (!open) {
       resetForm();
     }
+  };
+
+  const openEdit = (course: any) => {
+    setEditingCourse(course);
+    setFormData({
+      title: course.title || '',
+      description: course.description || '',
+      duration: course.duration || '',
+      lessons: String(course.lessons ?? 0),
+      price: String(course.price ?? 0),
+      tags: (course.tags || []).join(', '),
+    });
+    setThumbnailPreview('');
+    setThumbnailFile(null);
+    setMaterialFiles([]);
+    setIsDialogOpen(true);
   };
 
   return (
@@ -188,7 +253,7 @@ const EducatorDashboard = () => {
                 Create Course
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
+            <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{editingCourse ? 'Edit Course' : 'Create New Course'}</DialogTitle>
                 <DialogDescription>
@@ -214,6 +279,28 @@ const EducatorDashboard = () => {
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                       required
                     />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="price">Price</Label>
+                      <Input
+                        id="price"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={formData.price}
+                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="tags">Tags</Label>
+                      <Input
+                        id="tags"
+                        placeholder="e.g., math, beginner"
+                        value={formData.tags}
+                        onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                      />
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="thumbnail">Course Thumbnail</Label>
@@ -318,9 +405,7 @@ const EducatorDashboard = () => {
                   <Button
                     variant="outline"
                     className="flex-1"
-                    onClick={() =>
-                      toast({ title: 'Edit not implemented', description: 'Editing will be wired to backend later.' })
-                    }
+                    onClick={() => openEdit(course)}
                   >
                     <Edit className="h-4 w-4 mr-2" />
                     Edit
