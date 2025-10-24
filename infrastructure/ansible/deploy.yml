@@ -1,0 +1,40 @@
+- hosts: app_servers
+  become: true
+  vars:
+    project_dir: /home/ubuntu/edtech-app
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - docker.io
+        - docker-compose
+        - git
+
+    - name: Start Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Create project directory
+      file:
+        path: "{{ project_dir }}"
+        state: directory
+
+    - name: Copy project files to EC2
+      copy:
+        src: /mnt/c/Users/rohan/Downloads/tutorly-space-main/
+        dest: "{{ project_dir }}"
+        mode: 0755
+
+    - name: Run Docker Compose
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_dir }}"
+        state: present
+        restarted: true

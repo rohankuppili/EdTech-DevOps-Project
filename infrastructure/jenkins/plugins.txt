@@ -1,0 +1,7 @@
+workflow-aggregator
+git
+blueocean
+docker
+docker-workflow
+credentials
+ssh-agent
